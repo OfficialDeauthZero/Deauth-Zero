@@ -1,0 +1,49 @@
+import machine
+import time
+
+# Pin setup for IR LED (adjust pin number accordingly)
+ir_led_pin = machine.Pin(5, machine.Pin.OUT)
+
+def send_38khz_pulse(pulse_length):
+    """
+    Generates a 38kHz carrier wave on the given pin for the duration of pulse_length (in microseconds).
+    """
+    pulse_end_time = time.ticks_us() + pulse_length  # End time for the pulse
+    while time.ticks_us() < pulse_end_time:
+        ir_led_pin.on()  # Turn IR LED on
+        time.sleep_us(13)  # ON for ~13us (approx. half cycle of 38kHz)
+        ir_led_pin.off()  # Turn IR LED off
+        time.sleep_us(13)  # OFF for ~13us (approx. half cycle of 38kHz)
+
+def send_ir_signal():
+    """
+    Send a specific IR signal pattern using 38kHz pulses.
+    This is just a sample signal. In practice, you should replace the pattern
+    with the correct encoding for your remote.
+    """
+    # Example NEC protocol (32-bit) signal pattern, replace with actual timing
+    # Start burst
+    send_38khz_pulse(9000)  # 9ms ON (start signal)
+    time.sleep_us(4500)  # 4.5ms OFF (start signal gap)
+
+    # Send individual bits (1's and 0's)
+    # In NEC encoding, 1 is 560us ON followed by 1690us OFF
+    # 0 is 560us ON followed by 560us OFF
+    for i in range(32):  # Example 32-bit transmission
+        send_38khz_pulse(560)  # 560us ON for each bit
+        if i % 2 == 0:
+            time.sleep_us(1690)  # Long OFF for '1'
+        else:
+            time.sleep_us(560)  # Short OFF for '0'
+
+    # End burst
+    send_38khz_pulse(560)  # Final pulse
+    time.sleep_us(50000)  # 50ms gap between signals
+
+def main():
+    print("Sending IR signal...")
+    send_ir_signal()
+    print("IR signal sent.")
+
+if __name__ == "__main__":
+    main()
