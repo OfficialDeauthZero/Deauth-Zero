@@ -1,0 +1,19 @@
+bash:
+pip install pynfc
+code:
+import nfc
+
+# Define a function to handle tag detection
+def on_connect(tag):
+    print(f"Tag detected: {tag}")
+    return False  # Return False to stop after one tag is read
+
+# Main function to setup NFC reader
+def read_nfc():
+    with nfc.ContactlessFrontend('usb') as clf:
+        print("Waiting for NFC tag...")
+        clf.connect(rdwr={'on-connect': on_connect})
+
+if __name__ == "__main__":
+    read_nfc()
+
