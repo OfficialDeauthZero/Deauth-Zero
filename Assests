@@ -1,1 +1,6 @@
-
+devboards:
+ESP-32
+NRF-24
+ESP-8266
+Firmware:
+RFSware
