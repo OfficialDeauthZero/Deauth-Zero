@@ -1,0 +1,17 @@
+bash:
+pip install mfrc522
+code:
+from mfrc522 import SimpleMFRC522
+
+# Create an object to handle RFID interactions
+reader = SimpleMFRC522()
+
+try:
+    print("Hold a tag near the reader")
+    # Read the RFID tag
+    id, text = reader.read()
+    print(f"ID: {id}")
+    print(f"Text: {text}")
+finally:
+    # Cleanup GPIO pins (for Raspberry Pi)
+    reader.cleanup()
