@@ -1,30 +1,3 @@
-# HOST_TEST for espefuse.py using the pytest framework
-#
-# Supports esp32, esp32s2, esp32s3beta2, esp32s3,
-#          esp32c3, esp32h2beta1, esp32c2, esp32c6, esp32p4,
-#          esp32c61, esp32c5, esp32c5beta3.
-#
-# How to use:
-#
-# Run as HOST_TEST (without a physical connection to a chip):
-#  - `pytest test_espefuse.py --chip esp32`
-#  - `pytest test_espefuse.py --chip esp32s2`
-#
-# OR
-#
-# Run as TEST on FPGA (connection to FPGA with a flashed image):
-# required two COM ports
-#  - `pytest test_espefuse.py \
-#     --chip esp32 --port /dev/ttyUSB0 --reset-port /dev/ttyUSB1`
-#
-# where  - --port       - a port for espefuse.py operation
-#        - --reset-port - a port to clear efuses (connect RTS or DTR ->- J14 pin 39)
-#
-# Note: For FPGA with ESP32 image, you need to set an env variable ESPTOOL_ENV_FPGA to 1
-#       to slow down the connection sequence
-#       because of a long delay (~6 seconds) after resetting the FPGA.
-#       This is not necessary when using other images than ESP32
-
 import os
 import subprocess
 import sys
