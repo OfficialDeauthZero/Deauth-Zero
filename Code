@@ -1,0 +1,25 @@
+#include <IRremoteESP8266.h>
+#include <IRsend.h>
+
+const uint16_t kIrLedPin = 4; // GPIO4 (D4 on some boards)
+
+IRsend irsend(kIrLedPin);
+
+void setup() {
+ 
+  Serial.begin(115200);
+
+  irsend.begin();
+  Serial.println("IR Sender ready!");
+}
+
+void loop() {
+
+  unsigned int data = 0x20DF10EF;  
+  irsend.sendNEC(data, 32);        
+
+  Serial.println("IR Signal Sent");
+  
+  
+  delay(1);
+}
