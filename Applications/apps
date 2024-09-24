@@ -1,2 +1,3 @@
-Scan: RFID, NFC: Emulate
+Scan: RFID, NFC: Emulate, Save
 Bad USB: Bruteforce
+Jam WiFi: Select Device: Deauth
